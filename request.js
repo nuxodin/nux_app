@@ -1,6 +1,6 @@
 import { delCookie, setCookie, getCookies } from "https://deno.land/std/http/cookie.ts";
 
-export class NuxRequest {
+export class Request {
 	constructor(req){
 		this.url = req.url;
 		this.request = req;
