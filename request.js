@@ -1,4 +1,5 @@
 import { delCookie, setCookie, getCookies } from "https://deno.land/std/http/cookie.ts";
+import Introspected from "https://raw.githubusercontent.com/nuxodin/introspected/master/esm/introspected.js";
 
 export class Request {
 	constructor(req){
@@ -71,7 +72,15 @@ export class Request {
 		};
 
 		this.cookie.toResponse(response);
+		if (typeof response.body === 'string') response.body = new TextEncoder().encode(response.body);
 		this.request.respond(response);
+
+		this.sessionObject.save();
+	}
+	async initSession(){
+		this.sessionObject = new Session(this);
+		await this.sessionObject.init();
+		this.sess = this.sessionObject.data;
 	}
 }
 
@@ -90,6 +99,7 @@ class nuxCookies {
 		return this.newCookies[name]!==undefined ? this.newCookies[name].value : this.oldCookies[name];
 	}
 	set(name, options){
+		if (typeof options === 'number') options = options+'';
 		if (typeof options === 'string') options = {value:options};
 		if (options.value === undefined) console.warn('no cookie value!');
 		options.name = name;
@@ -113,21 +123,56 @@ class nuxCookies {
 	}
 }
 
+
+
+
+
 class Session {
 	constructor(request){
+		this.store = SessionStoreMemory;
 		this.request = request;
 		let id = this.request.cookie.get('sess');
 		if (!id) {
 			id = Math.random();
 			this.request.cookie.set('sess', id);
 		}
-		this.getData();
+		this.id = id;
+	}
+	async init() {
+		const data = await this.store.getData(this.id);
+		this.data = Introspected(data, (root, path) => {
+			this.changed = true;
+			// the root object that changed
+			//console.log(root);
+			// the path that just changed
+			//console.log(path);
+		});
+	}
+	async save() {
+		if (this.changed) {
+			var data = JSON.parse( JSON.stringify(this.data) );
+			this.store.saveData(this.id, data);
+		}
 	}
 }
-class SessionData {
 
-}
 
+const SessionStoreMemory = {
+	async getData(id){
+		if (!this.allSessions[id]) {
+			this.allSessions[id] = {
+				created: Date.now(),
+				data:{}
+			};
+		}
+		this.allSessions[id].lastAccess = Date.now();
+		return this.allSessions[id].data;
+	},
+	async saveData(id, data) {
+		this.allSessions[id].data = data;
+	},
+	allSessions:{}
+};
 
 
 function generateCsp(csp) {
