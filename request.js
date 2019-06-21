@@ -1,5 +1,5 @@
 import { delCookie, setCookie, getCookies } from "https://deno.land/std/http/cookie.ts";
-import Introspected from "https://raw.githubusercontent.com/nuxodin/introspected/master/esm/introspected.js";
+//import Introspected from "https://raw.githubusercontent.com/nuxodin/introspected/master/esm/introspected.js";
 
 export class Request {
 	constructor(req){
@@ -131,40 +131,45 @@ class Session {
 	constructor(request){
 		this.store = SessionStoreMemory;
 		this.request = request;
-		let id = this.request.cookie.get('sess');
-		if (!id) {
-			id = Math.random();
-			this.request.cookie.set('sess', id);
-		}
-		this.id = id;
 	}
 	async init() {
-		const data = await this.store.getData(this.id);
-		this.data = Introspected(data, (root, path) => {
-			this.changed = true;
-			// the root object that changed
-			//console.log(root);
-			// the path that just changed
-			//console.log(path);
-		});
+		let reportedId = this.request.cookie.get('sess');
+		if (!reportedId) {
+			await this._create();
+		} else {
+			this.data = await this.store.getData(reportedId);
+			if (this.data) {
+				this.id = reportedId;
+			} else { // session not found on server
+				await this._create();
+			}
+		}
+		this.oldJsonString = JSON.stringify(this.data);
+	}
+	async _create(){
+		this.id = Math.random();
+		this.request.cookie.set('sess', this.id);
+		this.data = await this.store.createData(this.id);
 	}
 	async save() {
-		if (this.changed) {
-			var data = JSON.parse( JSON.stringify(this.data) );
-			this.store.saveData(this.id, data);
-		}
+		const newJsonString = JSON.stringify(this.data);
+		var changed = this.oldJsonString !== newJsonString;
+		if (changed) this.store.saveData(this.id, this.data);
 	}
 }
 
 
 const SessionStoreMemory = {
+	async createData(id){
+		const sess = this.allSessions[id] = {
+			created: Date.now(),
+			lastAccess: Date.now(),
+			data:{}
+		};
+		return sess.data;
+	},
 	async getData(id){
-		if (!this.allSessions[id]) {
-			this.allSessions[id] = {
-				created: Date.now(),
-				data:{}
-			};
-		}
+		if (!this.allSessions[id]) return false;
 		this.allSessions[id].lastAccess = Date.now();
 		return this.allSessions[id].data;
 	},
@@ -173,6 +178,7 @@ const SessionStoreMemory = {
 	},
 	allSessions:{}
 };
+
 
 
 function generateCsp(csp) {
