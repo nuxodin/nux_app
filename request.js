@@ -1,8 +1,61 @@
 import { delCookie, setCookie, getCookies } from "https://deno.land/std/http/cookie.ts";
 //import Introspected from "https://raw.githubusercontent.com/nuxodin/introspected/master/esm/introspected.js";
 
+
+function serializeParams(items) {
+	var object = Object.create(null);
+	for (let item of items) {
+		var name = item[0];
+		var value = item[1];
+		var matches = name.match(/(^[^\[]+|\[[^\]]*\])/g);
+		var active = object;
+		for (var i=0, match; match=matches[i++];) { // walk path (item[xy][])
+			if (i>1) match = match.replace(/(^\[|\]$)/g,'');
+			if (matches.length === i) { // at the end
+				if (Array.isArray(active)) active.push(value);
+				else active[match] = value;
+			} else if (!active[match]) {
+				active[match] = matches[i] === '[]' ? [] : Object.create(null);
+			}
+			active = active[match];
+			if (typeof active === 'string') break; // todo: ?asdf=11&asdf[3]=3 => overwrite the sting asdf
+		}
+	}
+	return object;
+}
+
+
 export class Request {
 	constructor(req){
+
+		// request-headers
+		this.header = Object.create(null);
+		for (let header of req.headers) {
+			let name = header[0];
+			let value = header[1];
+			this.header[name] = value;
+		}
+
+		// Url-object
+		//this.URL = new URL(req.url.substr(1), this.header.host);
+		let protocol = 'http:'; // todo: where can i find the protocol? rel.proto is "HTTP/1.1"
+		this.URL = new URL(protocol + '//' + this.header.host + req.url);
+
+		this.__get = serializeParams(this.URL.searchParams);
+
+		/*
+		const body = await req.body()
+		if (req.method === 'post') {
+			if (this.header['content-type'] === 'application/json') {
+				this.body = JSON.parse(body);
+			}
+			if (this.header['content-type'] === 'multipart/form-data') {
+				// todo
+			}
+		}
+		*/
+
+
 		this.url = req.url;
 		this.request = req;
 		this.response = {
@@ -47,6 +100,9 @@ export class Request {
 			},
 		};
 		this.cookie = new nuxCookies(this.request);
+	}
+	get post(){
+
 	}
 	respond(obj){
 		this.response.header['Content-Security-Policy-Report-Only'] = generateCsp(this.response.csp_report);
@@ -122,9 +178,6 @@ class nuxCookies {
 		}
 	}
 }
-
-
-
 
 
 class Session {
