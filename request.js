@@ -27,7 +27,7 @@ function serializeParams(items) {
 
 export class Request {
 	constructor(req){
-
+		this.conn = req.conn;
 		// request-headers
 		this.header = Object.create(null);
 		for (let header of req.headers) {
@@ -131,7 +131,7 @@ export class Request {
 		if (typeof response.body === 'string') response.body = new TextEncoder().encode(response.body);
 		this.request.respond(response);
 
-		this.sessionObject.save();
+		this.sessionObject && this.sessionObject.save();
 	}
 	async initSession(){
 		this.sessionObject = new Session(this);
