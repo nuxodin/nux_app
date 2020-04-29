@@ -1,6 +1,16 @@
-import { delCookie, setCookie, getCookies } from "https://deno.land/std/http/cookie.ts";
+import { delCookie, setCookie, getCookies } from "https://deno.land/std@v0.41.0/http/cookie.ts";
 //import Introspected from "https://raw.githubusercontent.com/nuxodin/introspected/master/esm/introspected.js";
 
+console.warn('deprecated');
+
+const requests = new WeakMap();
+
+export function getNuxRequest(denoRequest){
+	if (requests.has(denoRequest)) return requests.get(denoRequest);
+	const request = new Request(denoRequest);
+	requests.set(denoRequest, request);
+	return request;
+}
 
 function serializeParams(items) {
 	var object = Object.create(null);
@@ -23,11 +33,10 @@ function serializeParams(items) {
 	}
 	return object;
 }
-
-
-export class Request {
+class Request {
 	constructor(req){
-		this.conn = req.conn;
+		this.ip = req.conn.remoteAddr.hostname;
+
 		// request-headers
 		this.header = Object.create(null);
 		for (let header of req.headers) {
@@ -104,33 +113,37 @@ export class Request {
 	get post(){
 
 	}
-	respond(obj){
+	getResponse(){
+		let body = this.response.body;
+
+		if (typeof body === 'string') body = new TextEncoder().encode(body);
+		if (typeof body === 'object') {
+//			body = JSON.stringify(body, null, 4);
+
+		}
+		this.response.body = body;
+
+
 		this.response.header['Content-Security-Policy-Report-Only'] = generateCsp(this.response.csp_report);
 		this.response.header['Content-Security-Policy'] = generateCsp(this.response.csp);
 		const headers = new Headers();
 		for (const key in this.response.header) {
-			headers.set(key, this.response.header[key]);
+			let value = this.response.header[key];
+			if (!value) continue;
+			headers.set(key, value);
 		}
 
-		// mixin argument
-		if (obj.status !== undefined) this.response.status = obj.status;
-		if (obj.body !== undefined) this.response.body = obj.body;
-		if (obj.headers) {
-			for (let h of obj.headers) { // will it add multiple same headers?
-				headers.set(h[0], h[1]);
-			}
-		}
-
-		const response = {
-			status: this.response.status,
+		var response = {
+			status: this.response.status || 200,
 			body: this.response.body,
 			headers
 		};
-
 		this.cookie.toResponse(response);
-		if (typeof response.body === 'string') response.body = new TextEncoder().encode(response.body);
+		return response;
+	}
+	respond(){
+		const response = this.getResponse();
 		this.request.respond(response);
-
 		this.sessionObject && this.sessionObject.save();
 	}
 	async initSession(){
